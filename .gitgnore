@@ -1,0 +1,17 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/*.pyc
+backend/.env
+
+# DB
+backend/data/*.db
+
+# Node
+node_modules/
+dist/
+.env
+
+# PlatformIO
+.pio/
+.vscode/
