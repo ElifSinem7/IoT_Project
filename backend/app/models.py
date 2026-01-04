@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, Float, String, DateTime, Index
+from sqlalchemy import Integer, Float, String, DateTime, Boolean, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, timezone
 from .database import Base
@@ -30,18 +30,37 @@ class Measurement(Base):
     device_id: Mapped[str] = mapped_column(String(64), index=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, default=utc_now)
 
+    # ==================== SENSOR DATA ====================
     temp_c: Mapped[float | None] = mapped_column(Float, nullable=True)
     hum_rh: Mapped[float | None] = mapped_column(Float, nullable=True)
     pressure_hpa: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    tvoc_ppb: Mapped[float | None] = mapped_column(Float, nullable=True)
-    eco2_ppm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tvoc_ppb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    eco2_ppm: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    rssi: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # ==================== LORA METRICS ====================
+    rssi: Mapped[int | None] = mapped_column(Integer, nullable=True)
     snr: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-100
-    status: Mapped[str | None] = mapped_column(String(16), nullable=True)  # OK/WARN/HIGH
+    # ==================== AIR QUALITY SCORE ====================
+    aq_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0-100
+
+    # ==================== TINYML PREDICTIONS ====================
+    pred_eco2_60m: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pred_tvoc_60m: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # ==================== ANOMALY DETECTION ====================
+    anom_eco2: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    anom_tvoc: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    # ==================== ALERT & STATUS ====================
+    alert: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    status: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)  # NORMAL/WARN/HIGH
+
+    # ==================== METADATA ====================
+    sample_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    frame_counter: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+# Composite index for efficient queries
 Index("ix_device_ts", Measurement.device_id, Measurement.ts)
