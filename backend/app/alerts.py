@@ -30,6 +30,79 @@ class TestRangeResult:
 
 
 # =========================================================
+# DELTA DETECTION (ANİ DEĞİŞİM ALGILAMA)
+# =========================================================
+
+def get_previous_measurement(
+    db: Session,
+    device_id: str,
+    before_ts: datetime
+) -> Optional[Measurement]:
+    """
+    Son ölçümü döndür (delta hesabı için).
+    """
+    stmt = (
+        select(Measurement)
+        .where(Measurement.device_id == device_id)
+        .where(Measurement.ts < before_ts)
+        .order_by(Measurement.ts.desc())
+        .limit(1)
+    )
+    result = db.execute(stmt).scalar_one_or_none()
+    return result
+
+
+def check_delta_change(
+    current: Optional[float],
+    previous: Optional[float],
+    threshold: float
+) -> bool:
+    """
+    İki değer arasında threshold'dan fazla değişim var mı?
+    """
+    if current is None or previous is None:
+        return False
+    return abs(current - previous) >= threshold
+
+
+def evaluate_delta_alert(
+    db: Session,
+    device_id: str,
+    ts: datetime,
+    eco2_ppm: Optional[float],
+    tvoc_ppb: Optional[float],
+    temp_c: Optional[float],
+    humidity_rh: Optional[float],
+    pressure_hpa: Optional[float]
+) -> bool:
+    """
+    Herhangi bir sensörde ani değişim var mı?
+    Returns: True if delta alert triggered
+    """
+    prev = get_previous_measurement(db, device_id, ts)
+    if prev is None:
+        return False  # İlk ölçüm, karşılaştırma yok
+
+    # Her sensör için delta kontrolü
+    if check_delta_change(eco2_ppm, prev.eco2_ppm, settings.ECO2_DELTA_PPM):
+        return True
+
+    if check_delta_change(tvoc_ppb, prev.tvoc_ppb, settings.TVOC_DELTA_PPB):
+        return True
+
+    if check_delta_change(temp_c, prev.temp_c, settings.TEMP_DELTA_C):
+        return True
+
+    if check_delta_change(humidity_rh, prev.humidity_rh, settings.HUM_DELTA_RH):
+        return True
+
+    if check_delta_change(pressure_hpa, prev.pressure_hpa, settings.PRESS_DELTA_HPA):
+        return True
+
+    return False
+
+
+# =========================================================
 # BASELINE / TREND-BASED ALERTING (PRODUCTION LOGIC)
 # =========================================================
 
@@ -146,22 +219,33 @@ def evaluate_alert(
 
 
 # =========================================================
-# TEST MODE – DAR ARALIK, HYSTERESIS’Lİ HIGH / NORMAL
+# TEST MODE – DAR ARALIK, HYSTERESIS'Lİ HIGH / NORMAL
 # =========================================================
 
 def evaluate_test_ranges(
     eco2_ppm: int,
     tvoc_ppb: int,
-    prev_status: Optional[str]
+    prev_status: Optional[str],
+    delta_alert: bool = False  # Yeni parametre
 ) -> TestRangeResult:
     """
     TEST MODE:
     Very sensitive range-based HIGH / NORMAL decision.
     Designed for physical sensor testing and demos.
+    
+    Now includes delta detection support:
+    - If delta_alert=True, immediately set status to HIGH
     """
 
     status = prev_status or "NORMAL"
     violations: List[str] = []
+
+    # ---------- DELTA CHECK (ÖNCELİK) ----------
+    if delta_alert:
+        status = "HIGH"
+        violations.append("sudden_change_detected")
+        # Delta alarm olunca diğer kontrolleri atla
+        return TestRangeResult(status=status, violations=violations)
 
     # ---------- eCO2 ----------
     if status == "NORMAL":

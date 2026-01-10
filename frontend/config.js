@@ -1,6 +1,6 @@
 // frontend/config.js
 export const CONFIG = {
-  API_BASE: "http://127.0.0.1:8000",
+  API_BASE: "http://127.0.0.1:8000/api" , // /api eklendi!,
   DEVICE_ID: "node-001",
   POLL_MS: 5000, // 5s - slightly longer interval for map
   API_KEY: "",

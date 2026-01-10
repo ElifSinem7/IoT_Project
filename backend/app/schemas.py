@@ -144,5 +144,4 @@ class DistrictsResponse(BaseModel):
 class AlertHistoryResponse(BaseModel):
     device_id: str
     count: int
-    items: List[MeasurementOut]    
-    
+    items: List[MeasurementOut]

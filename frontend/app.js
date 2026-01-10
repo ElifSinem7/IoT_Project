@@ -10,14 +10,24 @@ let heatLayer = null;
 let currentFilter = { city: "", district: "" };
 let selectedLocation = null;
 let chart;
+let allLocations = [];
 
 // Layer visibility states
 let showMarkers = true;
 let showCircles = true;
 let showHeatmap = false;
 
+// ✅ DEBUG MODE
+const DEBUG = true;
+function debugLog(message, data) {
+  if (DEBUG) {
+    console.log(`🔍 [DEBUG] ${message}`, data || '');
+  }
+}
+
 // Show API info
 $("apiBase").textContent = CONFIG.API_BASE;
+debugLog("API Base URL:", CONFIG.API_BASE);
 
 // API REQUESTS
 function headers() {
@@ -28,26 +38,112 @@ function headers() {
   return h;
 }
 
-async function apiGet(path) {
-  const url = `${CONFIG.API_BASE}${path}`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
-  return await res.json();
+function calculateScale(values, paddingRatio = 0.15) {
+  const filtered = values.filter(v => v !== null && v !== undefined);
+
+  if (filtered.length === 0) {
+    return { suggestedMin: 0, suggestedMax: 1 };
+  }
+
+  const min = Math.min(...filtered);
+  const max = Math.max(...filtered);
+
+  if (min === max) {
+    return {
+      suggestedMin: min - 1,
+      suggestedMax: max + 1
+    };
+  }
+
+  const padding = (max - min) * paddingRatio;
+
+  return {
+    suggestedMin: min - padding,
+    suggestedMax: max + padding
+  };
 }
 
-// MAP FUNCTIONS
+async function apiGet(path) {
+  const url = `${CONFIG.API_BASE}${path}`;
+  debugLog(`API Request: ${path}`);
+  
+  const res = await fetch(url, { headers: headers() });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
+  
+  const data = await res.json();
+  debugLog(`API Response: ${path}`, data);
+  
+  return data;
+}
+
+// ==================== ALERT FONKSİYONLARI ====================
+
+async function loadLatestAlert(deviceId) {
+  try {
+    const data = await apiGet(`/alerts/latest?device_id=${encodeURIComponent(deviceId)}`);
+    
+    if (data.found) {
+      debugLog("Latest alert found:", data);
+      return data;
+    }
+    return null;
+  } catch (e) {
+    console.error("Error loading latest alert:", e);
+    return null;
+  }
+}
+
+async function loadAlertHistory(deviceId, hours = 24, limit = 10) {
+  try {
+    const data = await apiGet(`/alerts/history?device_id=${encodeURIComponent(deviceId)}&hours=${hours}&limit=${limit}`);
+    
+    debugLog("Alert history loaded:", data);
+    return data;
+  } catch (e) {
+    console.error("Error loading alert history:", e);
+    return { device_id: deviceId, count: 0, items: [] };
+  }
+}
+
+function displayAlertHistory(alerts) {
+  const alertHistoryDiv = $("alertHistory");
+  if (!alertHistoryDiv) return;
+  
+  if (alerts.count === 0) {
+    alertHistoryDiv.innerHTML = '<p class="no-alerts">No recent alerts ✅</p>';
+    return;
+  }
+  
+  const html = `
+    <div class="alert-list">
+      ${alerts.items.map(item => {
+        const timestamp = item.ts ? new Date(item.ts).toLocaleString('en-US') : 'N/A';
+        return `
+          <div class="alert-item ${item.status ? item.status.toLowerCase() : 'warn'}">
+            <span class="alert-time">${timestamp}</span>
+            <span class="alert-value">TVOC: ${item.tvoc_ppb || 'N/A'} ppb, eCO₂: ${item.eco2_ppm || 'N/A'} ppm</span>
+            <span class="alert-status ${item.status ? item.status.toLowerCase() : 'warn'}">${item.status || 'ALERT'}</span>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+  
+  alertHistoryDiv.innerHTML = html;
+}
+
+// ==================== MAP FUNCTIONS ====================
+
 function initMap() {
-  // Initialize Leaflet map
   map = L.map('map').setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM);
   
-  // Add OpenStreetMap tile layer
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
     maxZoom: 18,
   }).addTo(map);
   
-  // Setup control event listeners
   setupMapControls();
+  debugLog("Map initialized");
 }
 
 function setupMapControls() {
@@ -68,7 +164,6 @@ function setupMapControls() {
 }
 
 function updateLayerVisibility() {
-  // Show/hide markers
   markers.forEach(marker => {
     if (showMarkers) {
       marker.addTo(map);
@@ -77,7 +172,6 @@ function updateLayerVisibility() {
     }
   });
   
-  // Show/hide circles
   circles.forEach(circle => {
     if (showCircles) {
       circle.addTo(map);
@@ -86,7 +180,6 @@ function updateLayerVisibility() {
     }
   });
   
-  // Show/hide heat map
   if (heatLayer) {
     if (showHeatmap) {
       heatLayer.addTo(map);
@@ -96,6 +189,26 @@ function updateLayerVisibility() {
   }
 }
 
+// ✅ Backend status fonksiyonları
+function getStatusColor(status) {
+  if (!status) return CONFIG.COLORS.NO_DATA;
+  const st = status.toUpperCase();
+  if (st === "HIGH") return CONFIG.COLORS.POOR;
+  if (st === "NORMAL" || st === "OK") return CONFIG.COLORS.GOOD;
+  if (st === "WARN") return CONFIG.COLORS.MODERATE;
+  return CONFIG.COLORS.NO_DATA;
+}
+
+function getStatusText(status) {
+  if (!status) return "NO DATA";
+  const st = status.toUpperCase();
+  if (st === "HIGH") return "HIGH";
+  if (st === "NORMAL" || st === "OK") return "NORMAL";
+  if (st === "WARN") return "MODERATE";
+  return "NO DATA";
+}
+
+// Fallback TVOC fonksiyonları
 function getQualityColor(tvoc) {
   if (tvoc === null || tvoc === undefined) return CONFIG.COLORS.NO_DATA;
   if (tvoc <= CONFIG.THRESHOLDS.GOOD) return CONFIG.COLORS.GOOD;
@@ -118,7 +231,6 @@ function getQualityClass(tvoc) {
 }
 
 function getHeatIntensity(tvoc) {
-  // Heat map intensity value (0-1 range)
   if (tvoc === null || tvoc === undefined) return 0.1;
   if (tvoc <= CONFIG.THRESHOLDS.GOOD) return 0.3;
   if (tvoc <= CONFIG.THRESHOLDS.MODERATE) return 0.6;
@@ -126,7 +238,6 @@ function getHeatIntensity(tvoc) {
 }
 
 function getCircleRadius(tvoc) {
-  // Circle radius based on TVOC value (in meters)
   if (tvoc === null || tvoc === undefined) return 2000;
   if (tvoc <= CONFIG.THRESHOLDS.GOOD) return 3000;
   if (tvoc <= CONFIG.THRESHOLDS.MODERATE) return 4000;
@@ -165,12 +276,22 @@ function createMarkerIcon(color) {
 }
 
 function addMarker(location) {
-  const { lat, lon, name, tvoc_ppb, eco2_ppm, temperature, humidity, pressure, last_update } = location;
+  const { lat, lon, name, tvoc_ppb, eco2_ppm, temperature, humidity, pressure, last_update, status } = location;
   
-  const color = getQualityColor(tvoc_ppb);
-  const quality = getQualityText(tvoc_ppb);
+  // ✅ Backend status varsa kullan, yoksa TVOC
+  const color = status ? getStatusColor(status) : getQualityColor(tvoc_ppb);
+  const quality = status ? getStatusText(status) : getQualityText(tvoc_ppb);
   
-  // 1. Color Circle (Large Area)
+  debugLog(`Adding marker: ${name}`, {
+    status,
+    tvoc_ppb,
+    eco2_ppm,
+    temperature,
+    humidity,
+    quality,
+    color
+  });
+  
   const circleRadius = getCircleRadius(tvoc_ppb);
   const circle = L.circle([lat, lon], {
     color: color,
@@ -185,144 +306,104 @@ function addMarker(location) {
   }
   circles.push(circle);
   
-  // 2. Marker (Point)
   const marker = L.marker([lat, lon], {
     icon: createMarkerIcon(color)
   });
   
-  if (showMarkers) {
-    marker.addTo(map);
-  }
-
-  // Popup content
   const popupContent = `
     <div class="popup-content">
       <h4>${name}</h4>
-      <p><strong>TVOC:</strong> ${tvoc_ppb ?? "N/A"} ppb</p>
-      <p><strong>eCO₂:</strong> ${eco2_ppm ?? "N/A"} ppm</p>
-      <p><strong>Temperature:</strong> ${temperature ?? "N/A"}°C</p>
-      <p><strong>Humidity:</strong> ${humidity ?? "N/A"}%</p>
-      <div class="popup-quality" style="
-        background: ${color};
-        color: white;
-      ">${quality}</div>
+      <p><strong>Quality:</strong> <span class="popup-quality ${getQualityClass(tvoc_ppb)}">${quality}</span></p>
+      ${tvoc_ppb !== null && tvoc_ppb !== undefined ? `<p><strong>TVOC:</strong> ${tvoc_ppb} ppb</p>` : ''}
+      ${eco2_ppm !== null && eco2_ppm !== undefined ? `<p><strong>eCO₂:</strong> ${eco2_ppm} ppm</p>` : ''}
+      ${temperature !== null && temperature !== undefined ? `<p><strong>Temp:</strong> ${temperature.toFixed(1)}°C</p>` : ''}
+      ${humidity !== null && humidity !== undefined ? `<p><strong>Humidity:</strong> ${humidity.toFixed(1)}%</p>` : ''}
+      ${pressure !== null && pressure !== undefined ? `<p><strong>Pressure:</strong> ${pressure.toFixed(1)} hPa</p>` : ''}
+      ${last_update ? `<p><strong>Updated:</strong> ${new Date(last_update).toLocaleTimeString()}</p>` : ''}
     </div>
   `;
   
   marker.bindPopup(popupContent);
+  marker.on('click', () => showLocationDetail(location));
   
-  // Update detail panel when marker clicked
-  marker.on('click', () => {
-    showLocationDetail(location);
-  });
-  
-  // Show details when circle clicked too
-  circle.on('click', () => {
-    showLocationDetail(location);
-    marker.openPopup();
-  });
-  
+  if (showMarkers) {
+    marker.addTo(map);
+  }
   markers.push(marker);
-}
-
-function createHeatLayer(locations) {
-  // Prepare data for heat map
-  const heatData = locations
-    .filter(loc => loc.tvoc_ppb !== null && loc.tvoc_ppb !== undefined)
-    .map(loc => {
-      const intensity = getHeatIntensity(loc.tvoc_ppb);
-      return [loc.lat, loc.lon, intensity];
-    });
-  
-  // Create heat layer
-  if (heatLayer) {
-    map.removeLayer(heatLayer);
-  }
-  
-  heatLayer = L.heatLayer(heatData, {
-    radius: 35,
-    blur: 45,
-    maxZoom: 13,
-    max: 1.0,
-    gradient: {
-      0.0: CONFIG.COLORS.GOOD,
-      0.5: CONFIG.COLORS.MODERATE,
-      1.0: CONFIG.COLORS.POOR
-    }
-  });
-  
-  if (showHeatmap) {
-    heatLayer.addTo(map);
-  }
-}
-
-function clearMarkers() {
-  markers.forEach(marker => map.removeLayer(marker));
-  markers = [];
-  
-  circles.forEach(circle => map.removeLayer(circle));
-  circles = [];
-  
-  if (heatLayer) {
-    map.removeLayer(heatLayer);
-    heatLayer = null;
-  }
 }
 
 async function loadMapData() {
   try {
-    // Get map data from API
-    let endpoint = "/map/points";
-    const params = [];
+    debugLog("Loading map data with filter:", currentFilter);
     
+    let path = "/map/points";
+    const params = [];
     if (currentFilter.city) params.push(`city=${encodeURIComponent(currentFilter.city)}`);
     if (currentFilter.district) params.push(`district=${encodeURIComponent(currentFilter.district)}`);
+    if (params.length > 0) path += "?" + params.join("&");
     
-    if (params.length > 0) endpoint += "?" + params.join("&");
+    const data = await apiGet(path);
+    debugLog("Map data received:", data.points?.length || 0, "points");
     
-    const data = await apiGet(endpoint);
+    allLocations = data.points || [];
     
-    clearMarkers();
+    // Clear existing markers
+    markers.forEach(m => map.removeLayer(m));
+    circles.forEach(c => map.removeLayer(c));
+    if (heatLayer) map.removeLayer(heatLayer);
     
-    if (data.points && data.points.length > 0) {
-      // Add markers and circles
-      data.points.forEach(location => addMarker(location));
+    markers = [];
+    circles = [];
+    heatLayer = null;
+    
+    // Add new markers
+    allLocations.forEach(location => addMarker(location));
+    
+    // Create heatmap layer
+    const heatData = allLocations
+      .filter(loc => loc.tvoc_ppb !== null && loc.tvoc_ppb !== undefined)
+      .map(loc => [loc.lat, loc.lon, getHeatIntensity(loc.tvoc_ppb)]);
+    
+    if (heatData.length > 0) {
+      heatLayer = L.heatLayer(heatData, {
+        radius: 35,
+        blur: 25,
+        maxZoom: 10,
+        gradient: {
+          0.0: CONFIG.COLORS.GOOD,
+          0.5: CONFIG.COLORS.MODERATE,
+          1.0: CONFIG.COLORS.POOR
+        }
+      });
       
-      // Create heat map layer
-      createHeatLayer(data.points);
-      
-      // Focus on first point (if filtering)
-      if (currentFilter.city || currentFilter.district) {
-        const bounds = L.latLngBounds(data.points.map(p => [p.lat, p.lon]));
-        map.fitBounds(bounds, { padding: [50, 50] });
+      if (showHeatmap) {
+        heatLayer.addTo(map);
       }
-    } else {
-      alert("No data found for this region.");
     }
     
     updateLastUpdate();
+    debugLog("Map updated with", allLocations.length, "locations");
+    
   } catch (e) {
     console.error("Error loading map data:", e);
-    $("raw").textContent = `Error: ${e.message}`;
   }
 }
 
-// CITY/DISTRICT FUNCTIONS
 async function loadCities() {
   try {
     const data = await apiGet("/locations/cities");
-    const citySelect = $("ilSelect");
+    debugLog("Cities loaded:", data.cities?.length || 0);
     
-    citySelect.innerHTML = '<option value="">All Turkey</option>';
+    const select = $("ilSelect");
+    select.innerHTML = '<option value="">All Turkey</option>';
     
-    if (data.cities) {
-      data.cities.forEach(city => {
-        const option = document.createElement("option");
-        option.value = city;
-        option.textContent = city;
-        citySelect.appendChild(option);
-      });
-    }
+    (data.cities || []).forEach(city => {
+      const option = document.createElement("option");
+      option.value = city;
+      option.textContent = city;
+      select.appendChild(option);
+    });
+    
   } catch (e) {
     console.error("Error loading cities:", e);
   }
@@ -330,60 +411,150 @@ async function loadCities() {
 
 async function loadDistricts(city) {
   try {
-    const districtSelect = $("ilceSelect");
-    districtSelect.innerHTML = '<option value="">All Districts</option>';
-    
-    if (!city) {
-      districtSelect.disabled = true;
-      return;
-    }
-    
     const data = await apiGet(`/locations/districts?city=${encodeURIComponent(city)}`);
+    debugLog("Districts loaded for", city, ":", data.districts?.length || 0);
     
-    if (data.districts && data.districts.length > 0) {
-      data.districts.forEach(district => {
-        const option = document.createElement("option");
-        option.value = district;
-        option.textContent = district;
-        districtSelect.appendChild(option);
-      });
-      districtSelect.disabled = false;
-    } else {
-      districtSelect.disabled = true;
-    }
+    const select = $("ilceSelect");
+    select.disabled = false;
+    select.innerHTML = '<option value="">All ' + city + '</option>';
+    
+    (data.districts || []).forEach(district => {
+      const option = document.createElement("option");
+      option.value = district;
+      option.textContent = district;
+      select.appendChild(option);
+    });
+    
   } catch (e) {
     console.error("Error loading districts:", e);
     $("ilceSelect").disabled = true;
   }
 }
 
-// DETAIL PANEL
-function showLocationDetail(location) {
+// ✅ YENI: Detail Panel Güncelleme Fonksiyonu (auto-refresh için)
+function updateDetailPanel(location) {
+  console.log("💥 UPDATING DETAIL PANEL:", location.name);
+  
+  selectedLocation = location;
+  
+  // NAME
+  $("locationName").textContent = location.name || "Unknown Location";
+  
+  // ✅ BACKEND STATUS BADGE
+  const backendStatus = location.status;
+  let quality, qualityClass;
+  
+  if (backendStatus) {
+    const st = backendStatus.toUpperCase();
+    if (st === "HIGH") {
+      quality = "HIGH";
+      qualityClass = "poor";
+    } else if (st === "NORMAL" || st === "OK") {
+      quality = "NORMAL";
+      qualityClass = "good";
+    } else {
+      quality = "MODERATE";
+      qualityClass = "moderate";
+    }
+    console.log("✅ Using backend status:", backendStatus, "→", quality);
+  } else {
+    // Fallback: TVOC
+    quality = getQualityText(location.tvoc_ppb);
+    qualityClass = getQualityClass(location.tvoc_ppb);
+    console.log("⚠️ No backend status, using TVOC");
+  }
+  
+  const badge = $("qualityBadge");
+  badge.textContent = quality;
+  badge.className = `quality-badge ${qualityClass}`;
+  
+  // ✅ VALUES - FORCE UPDATE
+  $("detailScore").textContent = location.score !== null && location.score !== undefined ? location.score : "-";
+  $("detailTvoc").textContent = location.tvoc_ppb !== null && location.tvoc_ppb !== undefined 
+    ? `${location.tvoc_ppb} ppb` 
+    : "-";
+  $("detailEco2").textContent = location.eco2_ppm !== null && location.eco2_ppm !== undefined 
+    ? `${location.eco2_ppm} ppm` 
+    : "-";
+  $("detailTemp").textContent = location.temperature !== null && location.temperature !== undefined 
+    ? `${location.temperature.toFixed(1)}°C` 
+    : "-";
+  $("detailHumidity").textContent = location.humidity !== null && location.humidity !== undefined 
+    ? `${location.humidity.toFixed(1)}%` 
+    : "-";
+  $("detailPressure").textContent = location.pressure !== null && location.pressure !== undefined 
+    ? `${location.pressure.toFixed(1)} hPa` 
+    : "-";
+  
+  console.log("✅ Values updated:", {
+    tvoc: location.tvoc_ppb,
+    eco2: location.eco2_ppm,
+    temp: location.temperature,
+    hum: location.humidity,
+    press: location.pressure,
+    status: backendStatus
+  });
+  
+  // TIMESTAMP
+  let timestamp = "-";
+  if (location.last_update) {
+    try {
+      const date = new Date(location.last_update);
+      if (date.getFullYear() < 2020) {
+        timestamp = "Just now";
+      } else {
+        timestamp = date.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+    } catch (e) {
+      timestamp = "Invalid date";
+    }
+  }
+  $("detailTimestamp").textContent = timestamp;
+  
+  // ✅ ALERT SECTION - Always show it
+  const alertSection = $("alertHistorySection");
+  if (alertSection) {
+    alertSection.style.display = "block";
+    console.log("🚨 Alert section enabled");
+  }
+  
+  console.log("💥 DETAIL PANEL UPDATE COMPLETE");
+}
+
+// ✅ Show Location Detail (ilk tıklama için)
+async function showLocationDetail(location) {
+  debugLog("🎯 Showing location detail:", {
+    name: location.name,
+    device_id: location.device_id || location.id,
+    status: location.status,
+    tvoc_ppb: location.tvoc_ppb,
+    eco2_ppm: location.eco2_ppm,
+    temperature: location.temperature
+  });
+  
   selectedLocation = location;
   
   $("noSelection").style.display = "none";
   $("detailPanel").style.display = "block";
   
-  $("locationName").textContent = location.name || "Unknown Location";
+  // Detail panel'i güncelle
+  updateDetailPanel(location);
   
-  const quality = getQualityText(location.tvoc_ppb);
-  const qualityClass = getQualityClass(location.tvoc_ppb);
-  const badge = $("qualityBadge");
-  badge.textContent = quality;
-  badge.className = `quality-badge ${qualityClass}`;
+  // ✅ ALERT HISTORY LOAD
+  const deviceId = location.device_id || location.id;
+  const history = await loadAlertHistory(deviceId, 24, 5);
+  displayAlertHistory(history);
   
-  $("detailScore").textContent = location.score ?? "-";
-  $("detailTvoc").textContent = location.tvoc_ppb ? `${location.tvoc_ppb} ppb` : "-";
-  $("detailEco2").textContent = location.eco2_ppm ? `${location.eco2_ppm} ppm` : "-";
-  $("detailTemp").textContent = location.temperature ? `${location.temperature}°C` : "-";
-  $("detailHumidity").textContent = location.humidity ? `${location.humidity}%` : "-";
-  $("detailPressure").textContent = location.pressure ? `${location.pressure} hPa` : "-";
+  // LOAD CHART
+  loadChartForLocation(deviceId);
   
-  const timestamp = location.last_update ? new Date(location.last_update).toLocaleString('en-US') : "-";
-  $("detailTimestamp").textContent = timestamp;
-  
-  // Load chart data for selected location
-  loadChartForLocation(location.device_id || location.id);
+  debugLog("✅ Location detail complete");
 }
 
 // CHART FUNCTIONS
@@ -399,21 +570,47 @@ function initChart() {
           data: [],
           borderColor: '#667eea',
           backgroundColor: 'rgba(102, 126, 234, 0.1)',
-          tension: 0.4
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y-air'
         },
         { 
           label: "eCO₂ (ppm)", 
           data: [],
           borderColor: '#764ba2',
           backgroundColor: 'rgba(118, 75, 162, 0.1)',
-          tension: 0.4
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y-air'
+        },
+        { 
+          label: "Temperature (°C)", 
+          data: [],
+          borderColor: '#FF6384',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)',
+          tension: 0.4,
+          fill: false,
+          yAxisID: 'y-env',
+          borderDash: [5, 5]
+        },
+        { 
+          label: "Humidity (%)", 
+          data: [],
+          borderColor: '#36A2EB',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)',
+          tension: 0.4,
+          fill: false,
+          yAxisID: 'y-env',
+          borderDash: [3, 3]
         },
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: true,
-      animation: false,
+      animation: {
+        duration: 300  // ✅ Hızlı animasyon
+      },
       interaction: {
         intersect: false,
         mode: 'index',
@@ -422,12 +619,19 @@ function initChart() {
         legend: {
           display: true,
           position: 'top',
+          labels: {
+            usePointStyle: true,
+            padding: 15,
+            font: {
+              size: 12
+            }
+          }
         },
         tooltip: {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backgroundColor: 'rgba(0, 0, 0, 0.9)',
           padding: 12,
           borderColor: '#667eea',
-          borderWidth: 1,
+          borderWidth: 2
         }
       },
       scales: {
@@ -440,26 +644,67 @@ function initChart() {
             display: false
           }
         },
-        y: {
-          beginAtZero: true,
+        'y-air': {
+          type: 'linear',
+          position: 'left',
+          title: {
+            display: true,
+            text: 'Air Quality',
+            font: {
+              size: 12,
+              weight: 'bold'
+            },
+            color: '#667eea'
+          },
           ticks: {
-            font: { size: 11 }
+            font: { size: 11 },
+            color: '#667eea'
           },
           grid: {
-            color: 'rgba(0, 0, 0, 0.05)'
-          }
+            color: 'rgba(102, 126, 234, 0.1)'
+          },
+          beginAtZero: false,
+          grace: '10%'
+        },
+        'y-env': {
+          type: 'linear',
+          position: 'right',
+          title: {
+            display: true,
+            text: 'Environment',
+            font: {
+              size: 12,
+              weight: 'bold'
+            },
+            color: '#FF6384'
+          },
+          ticks: {
+            font: { size: 11 },
+            color: '#FF6384'
+          },
+          grid: {
+            display: false
+          },
+          beginAtZero: false,
+          grace: '10%'
         }
       }
     }
   });
+  
+  debugLog("Chart initialized with 4 datasets");
 }
 
 async function loadChartForLocation(deviceId) {
   if (!deviceId) return;
   
   try {
+    debugLog("📊 Loading chart for:", deviceId);
+    
     const device = encodeURIComponent(deviceId);
     const history = await apiGet(`/history?device_id=${device}&limit=120`);
+    
+    debugLog("📊 Chart data received:", history.items?.length || 0, "items");
     
     updateChart(history.items || []);
   } catch (e) {
@@ -470,23 +715,43 @@ async function loadChartForLocation(deviceId) {
 function updateChart(items) {
   if (!items || items.length === 0) {
     chart.data.labels = [];
-    chart.data.datasets[0].data = [];
-    chart.data.datasets[1].data = [];
-    chart.update();
+    chart.data.datasets.forEach(ds => ds.data = []);
+    chart.update('none');  // ✅ Animasyonsuz güncelleme
     return;
   }
-  
+
   const labels = items.map(x => {
     const date = new Date(x.ts || x.timestamp);
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   });
+
   const tvoc = items.map(x => x.tvoc_ppb ?? null);
   const eco2 = items.map(x => x.eco2_ppm ?? null);
+  const temp = items.map(x => x.temp_c ?? null);
+  const humidity = items.map(x => x.hum_rh ?? null);
 
   chart.data.labels = labels;
   chart.data.datasets[0].data = tvoc;
   chart.data.datasets[1].data = eco2;
-  chart.update();
+  chart.data.datasets[2].data = temp;
+  chart.data.datasets[3].data = humidity;
+
+  const airScale = calculateScale([...tvoc, ...eco2], 0.15);
+  const envScale = calculateScale([...temp, ...humidity], 0.15);
+
+  chart.options.scales['y-air'].suggestedMin = airScale.suggestedMin;
+  chart.options.scales['y-air'].suggestedMax = airScale.suggestedMax;
+
+  chart.options.scales['y-env'].suggestedMin = envScale.suggestedMin;
+  chart.options.scales['y-env'].suggestedMax = envScale.suggestedMax;
+
+  chart.update('none');  // ✅ Animasyonsuz güncelleme
+
+  debugLog("📊 Chart updated", {
+    airScale,
+    envScale,
+    points: items.length
+  });
 }
 
 // EVENT LISTENERS
@@ -508,10 +773,12 @@ $("ilceSelect").addEventListener("change", (e) => {
 });
 
 $("filterBtn").addEventListener("click", () => {
+  debugLog("Filter button clicked");
   loadMapData();
 });
 
 $("refreshBtn").addEventListener("click", () => {
+  debugLog("Refresh button clicked");
   if (selectedLocation) {
     loadChartForLocation(selectedLocation.device_id || selectedLocation.id);
   }
@@ -519,24 +786,72 @@ $("refreshBtn").addEventListener("click", () => {
 
 // HELPER FUNCTIONS
 function updateLastUpdate() {
-  $("lastUpdate").textContent = new Date().toLocaleTimeString('en-US');
+  const now = new Date().toLocaleTimeString('en-US');
+  $("lastUpdate").textContent = now;
+  debugLog("Last update timestamp:", now);
+}
+
+// ✅ AUTO REFRESH - IMPROVED
+let refreshCount = 0;
+
+async function autoRefresh() {
+  refreshCount++;
+  console.log(`🔄 AUTO REFRESH #${refreshCount} - ${new Date().toLocaleTimeString()}`);
+  
+  try {
+    // Map data'yı yenile
+    await loadMapData();
+    
+    // ✅ Eğer bir lokasyon seçiliyse, detail panel'i güncelle
+    if (selectedLocation) {
+      const deviceId = selectedLocation.device_id || selectedLocation.id;
+      
+      // Map data'dan güncel bilgiyi bul
+      const updatedLocation = allLocations.find(loc => 
+        (loc.device_id || loc.id) === deviceId
+      );
+      
+      if (updatedLocation) {
+        console.log("🔄 Updating detail panel with fresh data:", updatedLocation.name);
+        updateDetailPanel(updatedLocation);
+        
+        // Alert history'yi yenile (daha seyrek)
+        if (refreshCount % 3 === 0) {  // Her 3 refresh'te bir
+          const history = await loadAlertHistory(deviceId, 24, 5);
+          displayAlertHistory(history);
+        }
+      }
+      
+      // Chart'ı güncelle
+      await loadChartForLocation(deviceId);
+    }
+    
+    updateLastUpdate();
+    console.log(`✅ AUTO REFRESH #${refreshCount} COMPLETE`);
+  } catch (e) {
+    console.error(`❌ AUTO REFRESH #${refreshCount} FAILED:`, e);
+  }
 }
 
 // INITIALIZATION
-
 async function init() {
+  console.log("🚀 COMPLETE WORKING DASHBOARD INITIALIZING...");
+  console.log("📍 API Base:", CONFIG.API_BASE);
+  console.log("⏱️  Auto-refresh interval:", CONFIG.POLL_MS / 1000, "seconds");
+  console.log("🔍 Debug mode: ENABLED");
+  console.log("✅ Backend status support: ENABLED");
+  console.log("✅ Auto-refresh detail panel: ENABLED");
+  
   initMap();
   initChart();
   await loadCities();
   await loadMapData();
   
-  // Auto refresh (every 5 seconds)
-  setInterval(() => {
-    if (selectedLocation) {
-      // Update only selected location data
-      loadChartForLocation(selectedLocation.device_id || selectedLocation.id);
-    }
-  }, CONFIG.POLL_MS);
+  // ✅ Auto refresh başlat
+  setInterval(autoRefresh, CONFIG.POLL_MS);
+  
+  console.log("✅ DASHBOARD INITIALIZED");
+  console.log("---");
 }
 
 // Start when page loads

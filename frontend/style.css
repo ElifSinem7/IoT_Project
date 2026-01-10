@@ -256,6 +256,154 @@ body {
   color: #6c757d;
 }
 
+/* ==================== ✅ YENİ: ALERT HISTORY STYLES ==================== */
+.alert-history-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid #f0f0f0;
+}
+
+.alert-history-section h4 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.no-alerts {
+  text-align: center;
+  padding: 16px;
+  background: #e8f5e9;
+  border-radius: 8px;
+  color: #2e7d32;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Custom scrollbar for alert list */
+.alert-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.alert-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.alert-list::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.alert-list::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.alert-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: #fff3e0;
+  border-left: 4px solid #ff9800;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: all 0.3s ease;
+}
+
+.alert-item:hover {
+  background: #ffe0b2;
+  transform: translateX(2px);
+}
+
+.alert-item.high {
+  background: #ffebee;
+  border-left-color: #f44336;
+}
+
+.alert-item.high:hover {
+  background: #ffcdd2;
+}
+
+.alert-item.warn {
+  background: #fff3e0;
+  border-left-color: #ff9800;
+}
+
+.alert-item.warn:hover {
+  background: #ffe0b2;
+}
+
+.alert-time {
+  font-weight: 600;
+  color: #555;
+  font-size: 12px;
+}
+
+.alert-value {
+  color: #666;
+  font-size: 13px;
+}
+
+.alert-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  align-self: flex-start;
+  letter-spacing: 0.5px;
+}
+
+.alert-status.normal {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.alert-status.warn {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.alert-status.high {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.alert-badge {
+  display: inline-block;
+  background: #f44336;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    opacity: 1; 
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 0.8; 
+    transform: scale(1.05);
+  }
+}
+/* ==================== END ALERT STYLES ==================== */
+
 /* Legend */
 .legend {
   display: flex;
@@ -448,6 +596,10 @@ pre {
   
   .map-container {
     height: 350px;
+  }
+  
+  .alert-list {
+    max-height: 150px;
   }
 }
 

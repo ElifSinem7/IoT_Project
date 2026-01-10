@@ -1,0 +1,13 @@
+{
+    "python.defaultInterpreterPath": "C:\\Users\\elifs\\OneDrive\\Masaüstü\\3. Sınıf\\IoT\\IoT Proje\\Know-The-Air-You-Breeze-In\\backend\\venv\\Scripts\\python.exe",
+    "python.analysis.extraPaths": [
+        "C:\\Users\\elifs\\OneDrive\\Masaüstü\\3. Sınıf\\IoT\\IoT Proje\\Know-The-Air-You-Breeze-In\\backend",
+        "C:\\Users\\elifs\\OneDrive\\Masaüstü\\3. Sınıf\\IoT\\IoT Proje\\Know-The-Air-You-Breeze-In\\backend\\app",
+        "C:\\Users\\elifs\\OneDrive\\Masaüstü\\3. Sınıf\\IoT\\IoT Proje\\Know-The-Air-You-Breeze-In\\backend\\venv\\Lib\\site-packages"
+    ],
+    "python.languageServer": "Pylance",
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingImports": "none"
+    }
+}
