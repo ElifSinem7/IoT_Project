@@ -1,4 +1,5 @@
 # 🌬️ Know The Air You Breeze In
+<img width="1536" height="1024" alt="ChatGPT Image 11 Oca 2026 15_40_48" src="https://github.com/user-attachments/assets/52bbff6f-75e9-4687-b03d-3ed2de752157" />
 
 **Know The Air You Breeze In** is a low-cost, modular, and distributed air quality monitoring system
 designed to detect and visualize air pollution events in **industrial zones, educational spaces,
