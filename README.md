@@ -10,6 +10,7 @@ and traceable data** by combining **IoT sensor nodes**, **wireless communication
 data processing**, and a **web-based visualization dashboard**.
 
 ---
+## Report: https://aguedutr-my.sharepoint.com/:w:/g/personal/elifsinem_genc_agu_edu_tr/IQDRIlwGmFO3Qa3WJgwJwUn3AVXYGKhAliX-hF33QHqyozs?e=lfaHgO
 
 ## 🚀 System Architecture
 
