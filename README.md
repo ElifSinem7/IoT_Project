@@ -11,6 +11,7 @@ data processing**, and a **web-based visualization dashboard**.
 
 ---
 ## Report: https://aguedutr-my.sharepoint.com/:w:/g/personal/elifsinem_genc_agu_edu_tr/IQDRIlwGmFO3Qa3WJgwJwUn3AVXYGKhAliX-hF33QHqyozs?e=lfaHgO
+## Video and Poster: https://aguedutr-my.sharepoint.com/personal/beyza_erdem_agu_edu_tr/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fbeyza%5Ferdem%5Fagu%5Fedu%5Ftr%2FDocuments%2FIoT%20Project&ga=1
 
 ## 🚀 System Architecture
 
